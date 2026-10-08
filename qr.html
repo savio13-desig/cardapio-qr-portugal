@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gerador de QR por mesa · Ementa digital</title>
+<link rel="stylesheet" href="css/estilo.css">
+</head>
+<body>
+<div class="selo-demo">Amostra de demonstração · novapicks</div>
+<main class="painel">
+  <div class="nao-imprimir">
+    <h1>QR code de cada mesa</h1>
+    <p style="color:var(--texto-suave)">Indique o endereço onde a ementa está publicada e quantas mesas tem a casa. Cada placa leva o número da mesa, pronta a imprimir e colar.</p>
+    <div class="campos">
+      <div><label for="base">Endereço da ementa</label><input type="url" id="base" inputmode="url"></div>
+      <div><label for="qtd">Quantidade de mesas</label><input type="number" id="qtd" min="1" max="100" value="12"></div>
+      <button class="btn btn-primario" id="imprimir" type="button">Imprimir placas</button>
+    </div>
+  </div>
+  <div class="folhas" id="folhas" aria-live="polite"></div>
+</main>
+<script src="vendor/qrcode.js"></script>
+<script src="js/dados.js"></script>
+<script>
+(function () {
+  "use strict";
+  var base = document.getElementById("base"), qtd = document.getElementById("qtd"), box = document.getElementById("folhas");
+  base.value = location.href.replace(/qr\.html.*$/, "index.html");
+  function esc(t) { return String(t).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function desenhar() {
+    var n = Math.max(1, Math.min(100, parseInt(qtd.value, 10) || 1)), html = "";
+    for (var i = 1; i <= n; i++) {
+      var q = qrcode(0, "M"); q.addData(base.value + (base.value.indexOf("?") > -1 ? "&" : "?") + "mesa=" + i); q.make();
+      var svg = q.createSvgTag({ cellSize: 4, margin: 2, scalable: true }).replace("<svg", '<svg class="qr" role="img" aria-label="QR code da mesa ' + i + '"');
+      html += '<div class="placa"><h3>' + esc(window.CARDAPIO.nome) + '</h3><div class="n">' + i + '</div><p><b>MESA</b></p>' + svg + "<p>Aponte a câmara do telemóvel<br>e peça sem esperar</p></div>";
+    }
+    box.innerHTML = html;
+  }
+  base.addEventListener("input", desenhar); qtd.addEventListener("input", desenhar);
+  document.getElementById("imprimir").addEventListener("click", function () { window.print(); });
+  desenhar();
+})();
+</script>
+</body>
+</html>

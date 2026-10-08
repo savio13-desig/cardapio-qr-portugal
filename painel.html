@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel do dono · Ementa digital</title>
+<link rel="stylesheet" href="css/estilo.css">
+</head>
+<body>
+<div class="selo-demo">Amostra de demonstração · painel do dono · <a href="index.html?mesa=7" target="_blank" rel="noopener">abrir a ementa da mesa 7</a></div>
+<main class="painel">
+  <h1>Painel da pizzaria</h1>
+  <p style="color:var(--texto-suave)">Faça um pedido na ementa (noutro separador, no mesmo navegador) e veja-o chegar aqui. Mude o estado e o cliente acompanha na hora. Esgote um sabor e ele desaparece da ementa.</p>
+  <div class="abas" role="tablist">
+    <button class="btn btn-contorno" role="tab" id="aba-ped" aria-selected="true" aria-controls="v-ped">Pedidos <span id="cont"></span></button>
+    <button class="btn btn-contorno" role="tab" id="aba-card" aria-selected="false" aria-controls="v-card">Ementa e preços</button>
+  </div>
+  <section id="v-ped" role="tabpanel" aria-labelledby="aba-ped">
+    <div class="acoes" style="margin:0 0 var(--e2)"><button class="btn btn-primario" id="novo" type="button" style="flex:none">+ Novo pedido manual</button></div>
+    <div class="quadro" id="quadro" aria-live="polite"></div>
+  </section>
+  <section id="v-card" role="tabpanel" aria-labelledby="aba-card" hidden>
+    <form id="novo-item" class="ficha" style="margin-bottom:var(--e3)" novalidate>
+      <h3>Adicionar novo produto</h3>
+      <div class="painel" style="padding:0"><div class="campos" style="grid-template-columns:1fr;margin:0">
+        <div><label for="ni-nome">Nome do produto</label><input type="text" id="ni-nome" maxlength="40" required></div>
+        <div><label for="ni-desc">Descrição (ingredientes)</label><textarea id="ni-desc" rows="2" maxlength="140"></textarea></div>
+        <div><label for="ni-cat">Categoria</label><select id="ni-cat"></select></div>
+        <div><label for="ni-preco">Preço (€) <small id="ni-dica" style="font-weight:400;color:var(--texto-suave)"></small></label><input type="number" id="ni-preco" min="1" step="0.5" inputmode="decimal"></div>
+        <label class="opc" style="margin:0"><input type="checkbox" id="ni-tag"><span>Destacar como "Novidade"</span></label>
+      </div></div>
+      <p class="aviso" id="ni-erro" role="alert" hidden></p>
+      <button class="btn btn-primario" type="submit" style="margin-top:var(--e2)">Adicionar à ementa</button>
+    </form>
+    <table class="tabela"><thead><tr><th>Item</th><th>Preço base (€)</th><th>Disponível</th></tr></thead><tbody id="tab"></tbody></table>
+    <div class="acoes"><button class="btn btn-contorno" id="reset" type="button">Restaurar ementa original</button><button class="btn btn-contorno" id="zerar" type="button">Apagar pedidos de teste</button></div>
+    <p class="aviso">Na versão final este painel tem autenticação e grava numa base de dados online, valendo para todos os telemóveis. Nesta amostra os dados ficam neste navegador.</p>
+  </section>
+</main>
+<dialog id="manual" aria-labelledby="man-t">
+  <button class="x" id="man-x" type="button" aria-label="Fechar">×</button>
+  <h2 id="man-t">Novo pedido manual</h2>
+  <label for="man-origem">Origem</label>
+  <select id="man-origem"><option value="mesa">Mesa</option><option value="Balcão">Balcão</option><option value="Telefone">Telefone</option><option value="WhatsApp">WhatsApp</option></select>
+  <div id="man-mesa-box"><label for="man-mesa">Número da mesa</label><input type="text" id="man-mesa" maxlength="4" inputmode="numeric"></div>
+  <label for="man-nome">Nome do cliente (opcional)</label><input type="text" id="man-nome" maxlength="40">
+  <fieldset><legend>Adicionar item</legend>
+    <label for="man-item">Item</label><select id="man-item"></select>
+    <div id="man-pizza">
+      <label for="man-tam">Tamanho</label><select id="man-tam"></select>
+      <label for="man-borda">Orla recheada</label><select id="man-borda"></select>
+    </div>
+    <label for="man-qtd">Quantidade</label><input type="number" id="man-qtd" min="1" max="20" value="1">
+    <button class="btn btn-contorno" id="man-add" type="button" style="width:100%;margin-top:var(--e2)">Adicionar ao pedido</button>
+  </fieldset>
+  <div id="man-lista"></div>
+  <div class="totais" id="man-tot"></div>
+  <label for="man-obs">Observações</label><textarea id="man-obs" rows="2" maxlength="200"></textarea>
+  <label class="opc" style="margin-top:var(--e2)" hidden><input type="checkbox" id="man-serv" checked><span>Cobrar serviço (<span id="man-pct"></span>%)</span></label>
+  <p class="aviso" id="man-erro" role="alert" hidden></p>
+  <div class="acoes"><button class="btn btn-contorno" id="man-cancelar" type="button">Cancelar</button><button class="btn btn-primario" id="man-salvar" type="button">Registrar pedido</button></div>
+</dialog>
+<script src="js/dados.js"></script>
+<script src="js/store.js"></script>
+<script>
+(function () {
+  "use strict";
+  var $ = function (s) { return document.querySelector(s); };
+  var brl = function (v) { return v.toLocaleString("pt-PT", { style: "currency", currency: "EUR" }); };
+  function esc(t) { return String(t).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  var ROT = { novo: "Novo", preparando: "Em preparação", pronto: "Pronto", entregue: "Entregue" };
+  var PROX = { novo: ["preparando", "Iniciar preparação"], preparando: ["pronto", "Marcar pronto"], pronto: ["entregue", "Marcar entregue"] };
+
+  function pedidos() {
+    var l = Store.pedidos().slice().reverse();
+    $("#cont").textContent = "(" + l.filter(function (p) { return p.status !== "entregue"; }).length + ")";
+    $("#quadro").innerHTML = l.length ? l.map(function (p) {
+      var hora = new Date(p.hora).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" }), prox = PROX[p.status];
+      return '<article class="ficha" data-s="' + p.status + '"><h3><span>Nº ' + p.id + " · " + (p.mesa ? "Mesa " + esc(p.mesa) : esc(p.origem || "Levantar")) + '</span><span class="estado">' + ROT[p.status] + "</span></h3>" +
+        '<small style="color:var(--texto-suave)">' + hora + (p.nome ? " · " + esc(p.nome) : "") + "</small><ul>" + p.itens.map(function (i) { return "<li>" + esc(i) + "</li>"; }).join("") + "</ul>" +
+        (p.obs ? "<p><b>Obs.:</b> " + esc(p.obs) + "</p>" : "") + '<p class="preco">' + brl(p.total) + "</p>" +
+        (prox ? '<button class="btn btn-primario" data-id="' + p.id + '" data-s="' + prox[0] + '">' + prox[1] + "</button>" : "") + "</article>";
+    }).join("") : '<p class="vazio">Nenhum pedido ainda. Faça um pedido no cardápio para testar.</p>';
+  }
+  function cardapio() {
+    $("#tab").innerHTML = Store.dados().itens.map(function (i) {
+      return "<tr><td>" + esc(i.nome) + '</td><td><label class="so-leitor" for="p' + i.id + '">Preço de ' + esc(i.nome) + '</label><input type="number" id="p' + i.id + '" min="1" step="0.5" value="' + i.preco + '" data-preco="' + i.id + '"></td>' +
+        '<td><label><input type="checkbox" data-disp="' + i.id + '"' + (i.esgotado ? "" : " checked") + "> " + (i.esgotado ? "Esgotado" : "À venda") + "</label>" +
+        (i.custom ? ' <button class="btn btn-contorno" data-del="' + i.id + '" aria-label="Remover ' + esc(i.nome) + '" style="min-height:36px;padding:2px 12px;margin-left:8px">Remover</button>' : "") + "</td></tr>";
+    }).join("");
+  }
+  function catSelect() {
+    $("#ni-cat").innerHTML = window.CARDAPIO.categorias.map(function (c) { return '<option value="' + c.id + '">' + esc(c.nome) + "</option>"; }).join("");
+    dica();
+  }
+  function dica() { $("#ni-dica").textContent = $("#ni-cat").value === "bebidas" ? "" : "(tamanho Média; a Grande é calculada)"; }
+  $("#ni-cat").addEventListener("change", dica);
+  $("#novo-item").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var nome = $("#ni-nome").value.trim(), preco = parseFloat($("#ni-preco").value), er = $("#ni-erro");
+    if (!nome) { er.textContent = "Informe o nome do produto."; er.hidden = false; $("#ni-nome").focus(); return; }
+    if (!(preco > 0)) { er.textContent = "Informe um preço maior que zero."; er.hidden = false; $("#ni-preco").focus(); return; }
+    Store.novoItem({ nome: nome, desc: $("#ni-desc").value.trim() || "Sem descrição.", cat: $("#ni-cat").value, preco: preco, tag: $("#ni-tag").checked ? "Novidade" : "" });
+    this.reset(); er.hidden = true; dica(); cardapio();
+    er.textContent = "Produto adicionado. Já aparece no cardápio dos clientes."; er.hidden = false;
+  });
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest("button"); if (!b) return;
+    if (b.dataset.id) { Store.mudarStatus(Number(b.dataset.id), b.dataset.s); pedidos(); }
+    else if (b.id === "aba-ped" || b.id === "aba-card") {
+      var ped = b.id === "aba-ped";
+      $("#aba-ped").setAttribute("aria-selected", ped); $("#aba-card").setAttribute("aria-selected", !ped);
+      $("#v-ped").hidden = !ped; $("#v-card").hidden = ped;
+    }
+    else if (b.dataset.del) { Store.removerItem(Number(b.dataset.del)); cardapio(); }
+    else if (b.id === "reset") { Store.resetarCardapio(); cardapio(); }
+    else if (b.id === "zerar") { Store.limparPedidos(); pedidos(); }
+  });
+  document.addEventListener("change", function (e) {
+    var t = e.target;
+    if (t.dataset.preco) { var v = parseFloat(t.value); if (v > 0) Store.salvarItem(t.dataset.preco, { preco: v }); }
+    if (t.dataset.disp) { Store.salvarItem(t.dataset.disp, { esgotado: !t.checked }); cardapio(); }
+  });
+  /* ---------- pedido manual ---------- */
+  var D = Store.dados(), man = [];
+  var tamF = function (id) { return D.tamanhos.filter(function (t) { return t.id === id; })[0]; };
+  var bordaF = function (id) { return D.bordas.filter(function (b) { return b.id === id; })[0]; };
+  function totalMan() {
+    var sub = 0; man.forEach(function (l) { sub += l.preco * l.qtd; });
+    var taxa = $("#man-serv").checked ? Math.round(sub * D.taxaServico * 100) / 100 : 0;
+    return { sub: sub, taxa: taxa, total: sub + taxa };
+  }
+  function desenharMan() {
+    var t = totalMan();
+    $("#man-lista").innerHTML = man.length ? man.map(function (l, n) {
+      return '<div class="linha"><span class="nome">' + l.qtd + "x " + esc(l.desc) + '</span><span class="preco">' + brl(l.preco * l.qtd) + '</span><button class="btn btn-contorno" data-rem="' + n + '" aria-label="Remover ' + esc(l.desc) + '" style="min-height:36px;padding:2px 12px">×</button></div>';
+    }).join("") : '<p class="vazio">Nenhum item adicionado.</p>';
+    $("#man-tot").innerHTML = "<div><span>Subtotal</span><span>" + brl(t.sub) + "</span></div>" + (D.taxaServico ? "<div><span>Serviço</span><span>" + brl(t.taxa) + "</span></div>" : "") + '<div class="total"><span>Total</span><span>' + brl(t.total) + "</span></div>";
+  }
+  function abrirMan() {
+    man = []; D = Store.dados(); // pega preços/esgotados mais recentes
+    $("#man-item").innerHTML = D.itens.filter(function (i) { return !i.esgotado; }).map(function (i) { return '<option value="' + i.id + '">' + esc(i.nome) + " · " + brl(i.preco) + (i.bebida ? "" : " (média)") + "</option>"; }).join("");
+    $("#man-tam").innerHTML = D.tamanhos.map(function (t) { return '<option value="' + t.id + '">' + esc(t.nome) + " · " + esc(t.detalhe) + "</option>"; }).join("");
+    $("#man-borda").innerHTML = D.bordas.map(function (b) { return '<option value="' + b.id + '">' + esc(b.nome) + (b.preco ? " + " + brl(b.preco) : "") + "</option>"; }).join("");
+    ["man-mesa", "man-nome", "man-obs"].forEach(function (id) { $("#" + id).value = ""; });
+    $("#man-origem").value = "mesa"; $("#man-qtd").value = 1; $("#man-serv").checked = true; $("#man-pct").textContent = Math.round(D.taxaServico * 100);
+    $("#man-erro").hidden = true; trocaItem(); trocaOrigem(); desenharMan(); $("#manual").showModal();
+  }
+  function itemSel() { return D.itens.filter(function (i) { return i.id === Number($("#man-item").value); })[0]; }
+  function trocaItem() { $("#man-pizza").hidden = !!(itemSel() && itemSel().bebida); }
+  function trocaOrigem() { var m = $("#man-origem").value === "mesa"; $("#man-mesa-box").hidden = !m; $("#man-serv").checked = m; desenharMan(); }
+  function erro(t) { var e = $("#man-erro"); e.textContent = t; e.hidden = false; }
+  function adicionarMan() {
+    var i = itemSel(), q = Math.max(1, Math.min(20, parseInt($("#man-qtd").value, 10) || 1));
+    if (!i) return;
+    var desc = i.nome, preco = i.preco;
+    if (!i.bebida) {
+      var t = tamF($("#man-tam").value), b = bordaF($("#man-borda").value);
+      preco = Math.round(i.preco * t.fator) + b.preco;
+      desc = i.nome + " (" + t.nome + (b.id ? ", borda " + b.nome : "") + ")";
+    }
+    var ex = man.filter(function (l) { return l.desc === desc; })[0];
+    if (ex) ex.qtd += q; else man.push({ desc: desc, preco: preco, qtd: q });
+    $("#man-qtd").value = 1; $("#man-erro").hidden = true; desenharMan();
+  }
+  function salvarMan() {
+    var origem = $("#man-origem").value, mesa = origem === "mesa" ? $("#man-mesa").value.replace(/[^0-9A-Za-z]/g, "").slice(0, 4) : "";
+    if (origem === "mesa" && !mesa) return erro("Informe o número da mesa.");
+    if (!man.length) return erro("Adicione pelo menos um item.");
+    Store.novoPedido({ mesa: mesa, origem: origem === "mesa" ? "" : origem, nome: $("#man-nome").value.trim(), obs: $("#man-obs").value.trim(),
+      itens: man.map(function (l) { return l.qtd + "x " + l.desc; }), total: totalMan().total, manual: true });
+    $("#manual").close(); pedidos();
+  }
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest("button"); if (!b) return;
+    if (b.id === "novo") abrirMan();
+    else if (b.id === "man-x" || b.id === "man-cancelar") $("#manual").close();
+    else if (b.id === "man-add") adicionarMan();
+    else if (b.id === "man-salvar") salvarMan();
+    else if (b.dataset.rem) { man.splice(Number(b.dataset.rem), 1); desenharMan(); }
+  });
+  $("#man-item").addEventListener("change", trocaItem);
+  $("#man-origem").addEventListener("change", trocaOrigem);
+  $("#man-serv").addEventListener("change", desenharMan);
+
+  Store.aoMudar(function (o) { if (o === "pedidos") pedidos(); });
+  pedidos(); cardapio(); catSelect();
+})();
+</script>
+</body>
+</html>
